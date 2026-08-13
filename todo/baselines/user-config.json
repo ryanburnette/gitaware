@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "roots": ["~/git"],
+  "layout": "discover",
+  "depth": 3,
+  "display": {
+    "name": "remote",
+    "show_all": false
+  }
+}

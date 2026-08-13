@@ -1,0 +1,37 @@
+{
+  "mode": "online+ls-remote",
+  "missing_len": 0,
+  "summary": {
+    "repos": 22,
+    "issues": 22,
+    "missing": 0,
+    "ok": 0
+  },
+  "sample_keys": [
+    "ahead",
+    "behind",
+    "branch",
+    "default_branch",
+    "detached",
+    "dirty",
+    "has_remote",
+    "host",
+    "is_repo",
+    "label",
+    "name",
+    "ok",
+    "org",
+    "path",
+    "path_name",
+    "path_org",
+    "remote_checked",
+    "remote_name",
+    "remote_newer",
+    "remote_owner",
+    "remote_url",
+    "signals",
+    "stash",
+    "untracked",
+    "upstream"
+  ]
+}

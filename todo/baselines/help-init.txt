@@ -1,0 +1,16 @@
+Usage: gitaware init [flags]
+
+Write ~/.config/gitaware/config.json with detected defaults.
+
+Flags:
+  -force
+    	overwrite existing config
+
+Commands choose what to do. Flags modify how.
+
+  gitaware              # status, issues only
+  gitaware -a           # status, every repo (clean = ○)
+  gitaware leave        # don't-walk-away checklist
+  gitaware leave -a     # leave rules, but list clean too
+  gitaware arrive       # online + fetch
+  gitaware prs          # open PRs on current branches

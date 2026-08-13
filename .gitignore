@@ -1,0 +1,14 @@
+LOCAL.md
+*.tmp
+*.tmp.d
+tmp/
+agent-session.tmp.d
+/bin/
+/dist/
+*.exe
+.DS_Store
+
+# recovery loop runtime (keep gitaware.good tracked)
+recovery/gitaware.candidate
+recovery/*.candidate
+todo/state/
