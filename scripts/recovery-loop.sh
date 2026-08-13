@@ -133,14 +133,14 @@ while test "$b_iter" -lt "$g_max"; do
 
 	fn_verify_good
 
-	printf '--- pre-writer gates ---\n'
+	printf '%s\n' '--- pre-writer gates ---'
 	"$g_root/scripts/recovery-check.sh" || true
 
-	printf '--- writer (%s) ---\n' "$g_writer_model"
+	printf '%s\n' "--- writer ($g_writer_model) ---"
 	b_wout="$g_state/writer-$b_iter.md"
 	fn_run_pi "$g_writer_model" \
 		"$g_root/scripts/prompts/recovery-writer.md" \
-		"$b_wout" || printf 'writer pi error; continuing to gates\n' >&2
+		"$b_wout" || printf '%s\n' 'writer pi error; continuing to gates' >&2
 
 	gofmt -w "$g_root/internal/app" "$g_root/cmd" 2>/dev/null || true
 
@@ -161,13 +161,13 @@ while test "$b_iter" -lt "$g_max"; do
 		git commit -F "$g_root/tmp/recovery-commit-msg.txt" || true
 	fi
 
-	printf '--- post-writer gates ---\n'
+	printf '%s\n' '--- post-writer gates ---'
 	b_gates_ok=0
 	if "$g_root/scripts/recovery-check.sh"; then
 		b_gates_ok=1
 	fi
 
-	printf '--- reviewer (%s) ---\n' "$g_reviewer_model"
+	printf '%s\n' "--- reviewer ($g_reviewer_model) ---"
 	b_rout="$g_state/review-$b_iter.md"
 	fn_run_pi "$g_reviewer_model" \
 		"$g_root/scripts/prompts/recovery-reviewer.md" \
