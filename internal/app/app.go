@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/ryanburnette/gitaware/internal/cache"
@@ -15,6 +17,7 @@ import (
 	"github.com/ryanburnette/gitaware/internal/ghonline"
 	"github.com/ryanburnette/gitaware/internal/gitlocal"
 	"github.com/ryanburnette/gitaware/internal/model"
+	"github.com/ryanburnette/gitaware/internal/progress"
 	"github.com/ryanburnette/gitaware/internal/render"
 	"github.com/ryanburnette/gitaware/internal/scan"
 )
@@ -41,28 +44,6 @@ func New() *App {
 	}
 }
 
-// RunStatus builds and prints a status report.
-func (a *App) RunStatus(ctx context.Context, opts config.Options, mode filter.Mode) error {
-	report, err := a.BuildReport(ctx, opts, mode)
-	if err != nil {
-		return err
-	}
-
-	issuesOnly := opts.IssuesOnly && !opts.All
-	filter.Apply(&report, issuesOnly, mode)
-
-	if opts.JSON {
-		return render.JSON(a.Stdout, report)
-	}
-	colorOn := config.ColorEnabled(opts.NoColor, render.IsTTY(os.Stdout))
-	render.Tree(a.Stdout, report, render.NewColor(colorOn))
-
-	if report.Summary.Issues > 0 || report.Summary.Missing > 0 {
-		return errIssues
-	}
-	return nil
-}
-
 // errIssues signals exit code 1.
 var errIssues = fmt.Errorf("issues found")
 
@@ -71,68 +52,181 @@ func IsIssues(err error) bool {
 	return err == errIssues
 }
 
+// SetupVerbose enables debug logging to stderr.
+func SetupVerbose(verbose bool) {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
+// progress builds a stderr progress reporter for a command run.
+// Progress is silenced under --json and on non-TTY stderr stays line-based
+// (never in-place \r). The returned Progress is already started.
+func (a *App) progress(opts config.Options, command string) *progress.Progress {
+	enabled := !opts.JSON
+	stderrTTY := writerIsTTY(a.Stderr)
+	color := config.ColorEnabled(opts.NoColor, stderrTTY)
+	p := progress.New(a.Stderr, progress.Options{
+		Enabled: enabled,
+		Color:   color,
+		Verbose: opts.Verbose,
+		TTY:     stderrTTY,
+	})
+	p.Start(command)
+	return p
+}
+
+// writerIsTTY reports whether w is an interactive terminal.
+func writerIsTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return render.IsTTY(f)
+}
+
+// commandName maps a filter mode to its progress label.
+func commandName(mode filter.Mode) string {
+	switch mode {
+	case filter.ModeLeave:
+		return "leave"
+	case filter.ModeArrive:
+		return "arrive"
+	default:
+		return "status"
+	}
+}
+
+// modeLabel renders the report mode tag shown in the title and JSON.
+func modeLabel(opts config.Options, mode filter.Mode) string {
+	switch {
+	case opts.Fetch && opts.Online:
+		return "online+fetch"
+	case opts.Fetch:
+		return "offline+fetch"
+	case opts.Online && opts.CheckRemote:
+		return "online+ls-remote"
+	case opts.Online:
+		return "online"
+	default:
+		return "offline"
+	}
+}
+
+// applyModeDefaults sets per-mode option defaults before enrichment.
+func applyModeDefaults(opts *config.Options, mode filter.Mode) {
+	switch mode {
+	case filter.ModeLeave:
+		opts.StrictBranch = true
+		opts.IncludeBehind = false
+	case filter.ModeArrive:
+		// Catch-up after switching machines: online, behind matters, strict
+		// branch. Freshness defaults to non-mutating ls-remote; --fetch opts in.
+		opts.Online = true
+		opts.IncludeBehind = true
+		opts.StrictBranch = true
+		if !opts.Fetch {
+			opts.CheckRemote = true
+		}
+		// Arrive deliberately does NOT set IncludeMissing — use `missing`.
+	case filter.ModeStatus:
+		opts.IncludeBehind = opts.Fetch || opts.CheckRemote || opts.Online
+	}
+}
+
+// RunStatus builds and prints a status report.
+func (a *App) RunStatus(ctx context.Context, opts config.Options, mode filter.Mode) error {
+	p := a.progress(opts, commandName(mode))
+	report, err := a.BuildReport(ctx, opts, mode, p)
+	if err != nil {
+		p.Fail(err.Error())
+		return err
+	}
+	p.End(summaryEnd(report, mode))
+
+	issuesOnly := opts.IssuesOnly
+	if opts.All {
+		issuesOnly = false
+	}
+	filter.Apply(&report, issuesOnly, mode)
+
+	if opts.JSON {
+		return render.JSON(a.Stdout, report)
+	}
+
+	colorOn := config.ColorEnabled(opts.NoColor, render.IsTTY(os.Stdout))
+	render.Tree(a.Stdout, report, render.NewThemeOpts(colorOn, colorOn))
+
+	if report.Summary.Issues > 0 || report.Summary.Missing > 0 {
+		return errIssues
+	}
+	return nil
+}
+
+// summaryEnd composes the progress.End summary line.
+func summaryEnd(report model.Report, mode filter.Mode) string {
+	s := report.Summary
+	if s.Issues == 0 && s.Missing == 0 {
+		return fmt.Sprintf("all clear · %d repos · %s", s.Repos, report.Mode)
+	}
+	return fmt.Sprintf("%d issues · %d repos · %s", s.Issues, s.Repos, report.Mode)
+}
+
 // BuildReport scans and enriches without rendering.
-func (a *App) BuildReport(ctx context.Context, opts config.Options, mode filter.Mode) (model.Report, error) {
-	root := config.ExpandRoot(opts.Root)
-	opts.Root = root
+func (a *App) BuildReport(ctx context.Context, opts config.Options, mode filter.Mode, p *progress.Progress) (model.Report, error) {
+	if p == nil {
+		p = progress.New(io.Discard, progress.Options{})
+	}
 	if opts.Workers <= 0 {
 		opts.Workers = config.DefaultWorkers()
 	}
-	// stash on by default
-	if !opts.JSON {
-		opts.IncludeStash = true
-	} else {
-		opts.IncludeStash = true
-	}
+	// Mode defaults must be applied before enrichment so that CheckRemote/Fetch
+	// drive ls-remote/fetch during local status.
+	applyModeDefaults(&opts, mode)
 
-	entries, err := scan.Discover(root, opts.OrgFilter, opts.WarnNonRepos, a.Git)
+	// Discover repos under all effective roots.
+	p.Stepf("scan", "discovering under %s", rootList(opts.Roots))
+	entries, err := scan.DiscoverAll(opts)
 	if err != nil {
 		return model.Report{}, err
 	}
 	repos := scan.ToRepos(entries)
-	repos = enrichLocal(ctx, repos, a.Git, opts)
+	p.StepDone("scan", fmt.Sprintf("%d repos", countRepos(repos)))
 
-	var missing []model.MissingRepo
-	modeName := "offline"
-	if opts.Fetch && opts.Online {
-		modeName = "online+fetch"
-	} else if opts.Fetch {
-		modeName = "offline+fetch"
-	} else if opts.Online {
-		modeName = "online"
+	// Local git status (and optional fetch / ls-remote freshness).
+	repos = enrichLocal(ctx, repos, a.Git, opts, p)
+
+	// Identity: apply display names from resolved name mode.
+	scan.ApplyDisplayNames(repos, opts.NameMode)
+
+	// Filter by remote owner after identity is applied.
+	if opts.OrgFilter != "" {
+		repos = scan.FilterByOrg(repos, opts.OrgFilter)
 	}
 
+	var missing []model.MissingRepo
 	if opts.Online {
 		store := cache.New(config.CacheDir())
 		gh := ghonline.New(store)
-		var err error
-		repos, missing, err = enrichOnline(ctx, repos, opts, gh)
+		repos, missing, err = enrichOnline(ctx, repos, opts, gh, p)
 		if err != nil {
 			return model.Report{}, err
 		}
 	}
 
-	// leave never cares about behind as "fresh" but we still derive
-	if mode == filter.ModeLeave {
-		opts.StrictBranch = true
-		opts.IncludeBehind = false
-	}
-	if mode == filter.ModeArrive {
-		opts.IncludeBehind = true
-		opts.StrictBranch = true
-		opts.IncludeMissing = true
-	}
-	if mode == filter.ModeStatus {
-		opts.IncludeBehind = opts.Fetch || opts.Online
-	}
-
 	repos = deriveAll(repos, opts, mode)
 	orgs := scan.GroupByOrg(repos)
 
-	// attach missing to orgs
+	// Attach missing clones to their orgs (or append as org-only groups).
 	if len(missing) > 0 {
 		byOrg := map[string][]model.MissingRepo{}
+		var orgOrder []string
 		for _, m := range missing {
+			if _, ok := byOrg[m.Org]; !ok {
+				orgOrder = append(orgOrder, m.Org)
+			}
 			byOrg[m.Org] = append(byOrg[m.Org], m)
 		}
 		seen := map[string]bool{}
@@ -142,17 +236,17 @@ func (a *App) BuildReport(ctx context.Context, opts config.Options, mode filter.
 				seen[orgs[i].Name] = true
 			}
 		}
-		for orgName, ms := range byOrg {
+		for _, orgName := range orgOrder {
 			if seen[orgName] {
 				continue
 			}
-			orgs = append(orgs, model.Org{Name: orgName, Missing: ms})
+			orgs = append(orgs, model.Org{Name: orgName, Missing: byOrg[orgName]})
 		}
 	}
 
 	report := model.Report{
-		Root:        root,
-		Mode:        modeName,
+		Root:        reportRoot(opts),
+		Mode:        modeLabel(opts, mode),
 		GeneratedAt: time.Now().UTC(),
 		Orgs:        orgs,
 		Missing:     missing,
@@ -161,75 +255,141 @@ func (a *App) BuildReport(ctx context.Context, opts config.Options, mode filter.
 	return report, nil
 }
 
-// RunDoctor checks environment.
+// reportRoot is the display root (first root, or cwd).
+func reportRoot(opts config.Options) string {
+	if len(opts.Roots) > 0 {
+		return opts.Roots[0]
+	}
+	if opts.Root != "" {
+		return opts.Root
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return cwd
+}
+
+func rootList(roots []string) string {
+	if len(roots) == 0 {
+		return "cwd"
+	}
+	if len(roots) == 1 {
+		return roots[0]
+	}
+	return fmt.Sprintf("%d roots", len(roots))
+}
+
+// RunDoctor prints effective config and environment checks.
 func (a *App) RunDoctor(opts config.Options) error {
-	root := config.ExpandRoot(opts.Root)
-	fmt.Fprintf(a.Stdout, "gitaware %s\n", Version)
-	fmt.Fprintf(a.Stdout, "root: %s\n", root)
+	out := a.Stdout
+	fmt.Fprintf(out, "gitaware %s\n", Version)
+
+	path := opts.ConfigPath
+	status := "missing"
+	if opts.ConfigOK {
+		status = "loaded"
+	}
+	fmt.Fprintf(out, "config: %s (%s)\n", path, status)
+	fmt.Fprintf(out, "layout: %s  depth: %d  name: %s  show_all: %t\n",
+		layoutLabel(opts.Layout), opts.Depth, nameLabel(opts.NameMode), opts.All)
+	fmt.Fprintln(out, "roots:")
+	for _, r := range opts.Roots {
+		fmt.Fprintf(out, "  %s\n", r)
+	}
 
 	if err := a.Git.Available(); err != nil {
-		fmt.Fprintf(a.Stdout, "git: %v\n", err)
+		fmt.Fprintf(out, "git: %v\n", err)
 	} else {
-		fmt.Fprintf(a.Stdout, "git: ok\n")
+		fmt.Fprintln(out, "git: ok")
 	}
 
 	gh := ghonline.New(nil)
 	if err := gh.Available(); err != nil {
-		fmt.Fprintf(a.Stdout, "gh: %v\n", err)
+		fmt.Fprintf(out, "gh: %v\n", err)
 	} else {
-		fmt.Fprintf(a.Stdout, "gh: ok\n")
-		u, err := gh.WhoAmI(context.Background())
-		if err != nil {
-			fmt.Fprintf(a.Stdout, "gh auth: %v\n", err)
+		fmt.Fprintln(out, "gh: ok")
+		if u, err := gh.WhoAmI(context.Background()); err != nil {
+			fmt.Fprintf(out, "gh user: %v\n", err)
 		} else {
-			fmt.Fprintf(a.Stdout, "gh user: %s\n", u.Login)
+			fmt.Fprintf(out, "gh user: %s\n", u.Login)
 		}
 	}
 
-	st, err := os.Stat(root)
-	if err != nil {
-		fmt.Fprintf(a.Stdout, "root exists: no (%v)\n", err)
-		return fmt.Errorf("doctor failed")
+	fmt.Fprintf(out, "cache: %s\n", config.CacheDir())
+
+	// Repo count uses discovery only (no git enrichment); stays silent/fast.
+	entries, err := scan.DiscoverAll(opts)
+	repos := 0
+	if err == nil {
+		repos = countRepos(scan.ToRepos(entries))
 	}
-	if !st.IsDir() {
-		fmt.Fprintf(a.Stdout, "root exists: not a directory\n")
-		return fmt.Errorf("doctor failed")
-	}
-	fmt.Fprintf(a.Stdout, "root exists: yes\n")
-	fmt.Fprintf(a.Stdout, "cache: %s\n", config.CacheDir())
+	fmt.Fprintf(out, "repos found: %d\n", repos)
 	return nil
 }
 
-// RunOrgs lists org directories under root.
+func layoutLabel(layout string) string {
+	if layout == "" {
+		return config.LayoutDiscover
+	}
+	return layout
+}
+
+func nameLabel(mode string) string {
+	if mode == "" {
+		return config.NameRemote
+	}
+	return mode
+}
+
+// RunOrgs lists org names that contain at least one discovered repo.
 func (a *App) RunOrgs(opts config.Options) error {
-	root := config.ExpandRoot(opts.Root)
-	entries, err := os.ReadDir(root)
+	entries, err := scan.DiscoverAll(opts)
 	if err != nil {
 		return err
 	}
+	seen := map[string]bool{}
+	var orgs []string
 	for _, e := range entries {
-		if !e.IsDir() || e.Name()[0] == '.' {
+		if e.Org == "" {
 			continue
 		}
-		fmt.Fprintln(a.Stdout, e.Name())
+		if seen[e.Org] {
+			continue
+		}
+		seen[e.Org] = true
+		orgs = append(orgs, e.Org)
+	}
+	sort.Strings(orgs)
+	for _, o := range orgs {
+		fmt.Fprintln(a.Stdout, o)
 	}
 	return nil
 }
 
-// RunMissing lists missing clones (online).
+// RunMissing lists GitHub repos not cloned under the roots (online).
 func (a *App) RunMissing(ctx context.Context, opts config.Options) error {
 	opts.Online = true
+	opts.IncludeMissing = true
 	opts.All = true
 	opts.IssuesOnly = false
-	report, err := a.BuildReport(ctx, opts, filter.ModeArrive)
+	p := a.progress(opts, "missing")
+	report, err := a.BuildReport(ctx, opts, filter.ModeArrive, p)
 	if err != nil {
+		p.Fail(err.Error())
 		return err
 	}
+	p.End(fmt.Sprintf("%d missing clones", len(report.Missing)))
+
 	if opts.JSON {
-		type out struct {
-			Missing []model.MissingRepo `json:"missing"`
+		// Minimal report: just the missing list + provenance.
+		out := model.Report{
+			Root:        report.Root,
+			Mode:        report.Mode,
+			GeneratedAt: report.GeneratedAt,
+			Missing:     report.Missing,
 		}
-		return render.JSON(a.Stdout, model.Report{Missing: report.Missing, Root: report.Root, Mode: report.Mode, GeneratedAt: report.GeneratedAt})
+		return render.JSON(a.Stdout, out)
 	}
 	if len(report.Missing) == 0 {
 		fmt.Fprintln(a.Stdout, "no missing clones")
@@ -244,48 +404,97 @@ func (a *App) RunMissing(ctx context.Context, opts config.Options) error {
 // RunPRs lists open PRs on current branches (online).
 func (a *App) RunPRs(ctx context.Context, opts config.Options) error {
 	opts.Online = true
+	opts.CheckAllPRs = true
 	opts.All = true
-	report, err := a.BuildReport(ctx, opts, filter.ModeStatus)
+	opts.IssuesOnly = false
+	p := a.progress(opts, "prs")
+	report, err := a.BuildReport(ctx, opts, filter.ModeStatus, p)
 	if err != nil {
+		p.Fail(err.Error())
 		return err
 	}
-	count := 0
-	for _, org := range report.Orgs {
-		for _, r := range org.Repos {
-			if r.PR == nil {
-				continue
-			}
-			count++
-			if opts.JSON {
-				continue
-			}
-			fmt.Fprintf(a.Stdout, "%s\tPR#%d\t%s\t%s\n", r.DisplayName(), r.PR.Number, r.Branch, r.PR.URL)
-		}
-	}
+	p.End("done")
+
 	if opts.JSON {
 		return render.JSON(a.Stdout, report)
 	}
-	if count == 0 {
+
+	colorOn := config.ColorEnabled(opts.NoColor, render.IsTTY(os.Stdout))
+	th := render.NewThemeOpts(colorOn, colorOn)
+
+	type prRow struct {
+		r model.Repo
+	}
+	var rows []prRow
+	for _, org := range report.Orgs {
+		for _, r := range org.Repos {
+			if r.PR != nil {
+				rows = append(rows, prRow{r})
+			}
+		}
+	}
+	if len(rows) == 0 {
 		fmt.Fprintln(a.Stdout, "no open PRs on current branches")
 		return nil
+	}
+
+	fmt.Fprintln(a.Stdout)
+	for _, row := range rows {
+		r := row.r
+		dot := th.StatusIssue.Render("●")
+		label := styleLabel(r.DisplayName(), th)
+		branch := styleBranchCell(r, th)
+		pr := render.PRLink(th, r.PR.Number, r.PR.URL, false)
+		url := th.Meta.Render(r.PR.URL)
+		fmt.Fprintf(a.Stdout, "%s  %s  %s  %s  %s\n", dot, label, branch, pr, url)
 	}
 	return nil
 }
 
-// RunFetch fetches all repos.
+// styleLabel dims the org/ prefix of an owner/repo label.
+func styleLabel(label string, th render.Theme) string {
+	if i := strings.LastIndex(label, "/"); i > 0 && i < len(label)-1 {
+		return th.Org.Render(label[:i+1]) + th.Repo.Render(label[i+1:])
+	}
+	return th.Repo.Render(label)
+}
+
+// styleBranchCell highlights non-default / detached branches.
+func styleBranchCell(r model.Repo, th render.Theme) string {
+	plain := r.Branch
+	if r.Detached {
+		plain = "DETACHED"
+	}
+	if plain == "" {
+		plain = "—"
+		return th.Meta.Render(plain)
+	}
+	defaults := config.DefaultBranches
+	if r.DefaultBranch != "" {
+		defaults = []string{r.DefaultBranch}
+	}
+	if r.Detached {
+		return th.Danger.Render(plain)
+	}
+	if config.IsDefaultBranch(r.Branch, defaults) {
+		return th.Branch.Render(plain)
+	}
+	return th.BranchHL.Render(plain)
+}
+
+// RunFetch fetches every local repo and prints a summary.
 func (a *App) RunFetch(ctx context.Context, opts config.Options) error {
-	root := config.ExpandRoot(opts.Root)
-	entries, err := scan.Discover(root, opts.OrgFilter, false, a.Git)
+	opts.Fetch = true
+	opts.IncludeStash = true
+	p := a.progress(opts, "fetch")
+	report, err := a.BuildReport(ctx, opts, filter.ModeStatus, p)
 	if err != nil {
+		p.Fail(err.Error())
 		return err
 	}
-	opts.Fetch = true
-	repos := scan.ToRepos(entries)
-	_ = enrichLocal(ctx, repos, a.Git, opts)
-	fmt.Fprintf(a.Stdout, "fetched %d repos under %s\n", countRepos(repos), root)
-	if opts.All || true {
-		// optional status after
-	}
+	p.End(fmt.Sprintf("fetched %d repos", report.Summary.Repos))
+
+	fmt.Fprintf(a.Stdout, "fetched %d repos under %s\n", report.Summary.Repos, report.Root)
 	return nil
 }
 
@@ -299,13 +508,18 @@ func countRepos(repos []model.Repo) int {
 	return n
 }
 
-// RunCloneMissing clones missing repos.
+// RunCloneMissing clones missing repos into the first root.
 func (a *App) RunCloneMissing(ctx context.Context, opts config.Options, names []string) error {
 	opts.Online = true
-	report, err := a.BuildReport(ctx, opts, filter.ModeArrive)
+	opts.IncludeMissing = true
+	p := a.progress(opts, "clone-missing")
+	report, err := a.BuildReport(ctx, opts, filter.ModeArrive, p)
 	if err != nil {
+		p.Fail(err.Error())
 		return err
 	}
+	p.End(fmt.Sprintf("%d missing", len(report.Missing)))
+
 	want := map[string]bool{}
 	for _, n := range names {
 		want[n] = true
@@ -325,7 +539,7 @@ func (a *App) RunCloneMissing(ctx context.Context, opts config.Options, names []
 		return nil
 	}
 
-	root := config.ExpandRoot(opts.Root)
+	root := firstRoot(opts)
 	for _, m := range toClone {
 		dest := filepath.Join(root, m.Org, m.Name)
 		if st, err := os.Stat(dest); err == nil && st.IsDir() {
@@ -344,11 +558,39 @@ func (a *App) RunCloneMissing(ctx context.Context, opts config.Options, names []
 	return nil
 }
 
-// SetupVerbose enables debug logging to stderr.
-func SetupVerbose(verbose bool) {
-	level := slog.LevelInfo
-	if verbose {
-		level = slog.LevelDebug
+// firstRoot returns the first effective root, or cwd.
+func firstRoot(opts config.Options) string {
+	if len(opts.Roots) > 0 {
+		return opts.Roots[0]
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	if opts.Root != "" {
+		return opts.Root
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return cwd
+}
+
+// RunInit writes a sample config if none exists (or with --force).
+func (a *App) RunInit(opts config.Options, force bool) error {
+	path := config.ConfigPath()
+	if !force {
+		if _, err := os.Stat(path); err == nil {
+			fmt.Fprintf(a.Stdout, "config exists: %s (use --force to overwrite)\n", path)
+			return nil
+		}
+	}
+	f := config.SampleConfig()
+	// Prefer ~/git if it exists as a root candidate.
+	existing := config.ExistingRoots([]string{"~/git"})
+	if len(existing) > 0 {
+		f.Roots = []string{"~/git"}
+	}
+	if err := config.WriteFile(path, f); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.Stdout, "wrote %s\n", path)
+	return nil
 }
