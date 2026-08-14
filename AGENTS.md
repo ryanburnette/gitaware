@@ -34,8 +34,9 @@ internal/cache/        ~/.cache/gitaware JSON TTL cache
 ## Invariants
 
 - **Read-only by default.** Network reads (`ls-remote`, `gh`) are fine; disk/git mutations are not silent.
-- Mutating ops (`fetch`, `clone-missing`, `--fetch`) require interactive `Y` or `-y`.
+- Mutating ops (`arrive --fetch`, alias `fetch`, `clone-missing`, other `--fetch`) require interactive `Y` or `-y`.
 - Out-of-date check without mutate: `git ls-remote` (`--check-remote` / `arrive` default), not fetch.
+- `fetch` command is a thin alias of `arrive --fetch` (same report path).
 - Offline local status by default. Online: `--online`, `arrive`, `prs`, `missing`.
 - Shell out to `git` and `gh`; do not add go-git unless there is a clear win.
 - Identity (host/org/repo) from **origin remote**, not path layout.
@@ -58,7 +59,7 @@ go vet ./...
 
 - `GroupByOrg` must not keep a pointer across `append` (use index map).
 - `leave` must not treat behind-only as an issue.
-- `arrive` defaults to **ls-remote** freshness (no fetch). `--fetch` is opt-in and confirms.
+- `arrive` defaults to **ls-remote** freshness (no fetch). `--fetch` is opt-in and confirms; prefer that over the `fetch` alias.
 - `arrive` does **not** list uncloned repos; that is only `missing` / `--missing`.
 - Porcelain v2 `branch.ab` absent ⇒ `no_upstream`, not ahead/behind 0.
 - GitHub API uses **origin** owner/name, not folder path alone.
