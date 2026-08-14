@@ -482,22 +482,6 @@ func styleBranchCell(r model.Repo, th render.Theme) string {
 	return th.BranchHL.Render(plain)
 }
 
-// RunFetch fetches every local repo and prints a summary.
-func (a *App) RunFetch(ctx context.Context, opts config.Options) error {
-	opts.Fetch = true
-	opts.IncludeStash = true
-	p := a.progress(opts, "fetch")
-	report, err := a.BuildReport(ctx, opts, filter.ModeStatus, p)
-	if err != nil {
-		p.Fail(err.Error())
-		return err
-	}
-	p.End(fmt.Sprintf("fetched %d repos", report.Summary.Repos))
-
-	fmt.Fprintf(a.Stdout, "fetched %d repos under %s\n", report.Summary.Repos, report.Root)
-	return nil
-}
-
 func countRepos(repos []model.Repo) int {
 	n := 0
 	for _, r := range repos {

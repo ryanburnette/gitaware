@@ -1,6 +1,8 @@
 Usage: gitaware fetch [flags]
 
-MUTATING: git fetch in every local repo (confirms unless -y).
+Alias of: gitaware arrive --fetch
+MUTATING: git fetch, then show the arrive report (confirms unless -y).
+Prefer: gitaware arrive --fetch
 
 Flags:
   -C string
@@ -54,5 +56,6 @@ Commands choose what to do. Flags modify how.
   gitaware -a           # status, every repo (clean = ○)
   gitaware leave        # don't-walk-away checklist
   gitaware leave -a     # leave rules, but list clean too
-  gitaware arrive       # online + fetch
+  gitaware arrive       # online catch-up (ls-remote, no fetch)
+  gitaware arrive --fetch  # fetch then arrive report
   gitaware prs          # open PRs on current branches

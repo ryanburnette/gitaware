@@ -62,6 +62,7 @@ fn_need_cmd "$g_cand" status 'directory to walk'
 fn_need_cmd "$g_cand" arrive 'Does not list uncloned'
 fn_need_cmd "$g_cand" arrive 'ls-remote'
 fn_need_cmd "$g_cand" fetch 'MUTATING'
+fn_need_cmd "$g_cand" fetch 'arrive --fetch'
 fn_need_cmd "$g_cand" leave 'behind'
 
 # fetch confirm abort

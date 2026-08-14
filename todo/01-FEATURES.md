@@ -236,7 +236,7 @@ Identity still from remote after enrich.
 
 - `New`, `SetupVerbose`, `IsIssues`, `Version`, `BuildTime`
 - `(*App).RunStatus`, `BuildReport`, `RunDoctor`, `RunOrgs`, `RunMissing`,
-  `RunPRs`, `RunFetch`, `RunCloneMissing`, `RunInit`
+  `RunPRs`, `RunCloneMissing`, `RunInit` (`fetch` → `RunStatus` arrive+fetch alias)
 - helpers used internally: `progress`, `modeLabel`, `countRepos`, `enrichLocal`,
   `enrichOnline`, `deriveAll`, `ghRepo`
 

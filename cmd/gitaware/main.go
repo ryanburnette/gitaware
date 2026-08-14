@@ -177,7 +177,9 @@ func printCmdHelp(name string, fs *flag.FlagSet) {
 	case "missing":
 		fmt.Fprintln(os.Stdout, "List GitHub repos not cloned under your roots (read-only).")
 	case "fetch":
-		fmt.Fprintln(os.Stdout, "MUTATING: git fetch in every local repo (confirms unless -y).")
+		fmt.Fprintln(os.Stdout, "Alias of: gitaware arrive --fetch")
+		fmt.Fprintln(os.Stdout, "MUTATING: git fetch, then show the arrive report (confirms unless -y).")
+		fmt.Fprintln(os.Stdout, "Prefer: gitaware arrive --fetch")
 	case "clone-missing":
 		fmt.Fprintln(os.Stdout, "MUTATING: clone missing GitHub repos into the first root (confirms unless -y).")
 	case "init":
@@ -197,7 +199,8 @@ Commands choose what to do. Flags modify how.
   gitaware -a           # status, every repo (clean = ○)
   gitaware leave        # don't-walk-away checklist
   gitaware leave -a     # leave rules, but list clean too
-  gitaware arrive       # online + fetch
+  gitaware arrive       # online catch-up (ls-remote, no fetch)
+  gitaware arrive --fetch  # fetch then arrive report
   gitaware prs          # open PRs on current branches`)
 }
 
@@ -266,6 +269,7 @@ func cmdPRs(ctx context.Context, a *app.App, args []string) error {
 	return a.RunPRs(ctx, opts)
 }
 
+// cmdFetch is a thin alias of arrive --fetch: same online arrive report after fetch.
 func cmdFetch(ctx context.Context, a *app.App, args []string) error {
 	opts, _, err := parseCommon("fetch", args)
 	if err != nil {
@@ -274,11 +278,12 @@ func cmdFetch(ctx context.Context, a *app.App, args []string) error {
 		}
 		return err
 	}
-	opts.Fetch = true // command always fetches
-	if err := confirmMutating(opts, "git fetch --all --prune in every local repo", "fetch"); err != nil {
+	opts.Fetch = true
+	opts.Online = true
+	if err := confirmMutating(opts, "git fetch in scanned repos", "fetch (alias of arrive --fetch)"); err != nil {
 		return err
 	}
-	return a.RunFetch(ctx, opts)
+	return a.RunStatus(ctx, opts, filter.ModeArrive)
 }
 
 func cmdCloneMissing(ctx context.Context, a *app.App, args []string) error {
@@ -366,10 +371,10 @@ Usage:
 Commands (what to do):
   status          Status table (default if you omit the command)
   leave           Offline: unfinished work before you leave
-  arrive          Online: fetch, behind, missing clones, drift
+  arrive          Online: behind / drift (ls-remote; no fetch by default)
   prs             Online: open PRs on current branches (read-only)
   missing         Online: GitHub repos not cloned
-  fetch           git fetch in every local repo
+  fetch           Alias of arrive --fetch (mutates; confirms)
   clone-missing   Clone missing repos into the first root
   init            Write ~/.config/gitaware/config.json
   doctor          Effective config + git/gh checks
@@ -383,7 +388,7 @@ Flags (how — common ones):
   -C, --root DIR    Scan only this directory (overrides config roots)
   --layout MODE     flat | org/repo | host/org/repo | discover
   --check-remote    Non-mutating: ls-remote to detect remote updates
-  --fetch           MUTATING: git fetch (confirms; use -y to skip)
+  --fetch           MUTATING: git fetch then continue (confirms; use -y to skip)
   -y, --yes         Skip mutating confirmation
   --online          Enable gh signals on status
   --json            JSON on stdout (hides progress)
@@ -392,7 +397,8 @@ Flags (how — common ones):
 Read vs write:
   Read-only by default (status, leave, arrive, prs, missing).
   arrive uses ls-remote for freshness — does not update local refs.
-  Mutating: fetch, clone-missing, and any command with --fetch.
+  Primary mutate path: arrive --fetch (or alias: fetch).
+  Also mutating: clone-missing, and --fetch on other commands.
   Those print a WARNING and require Y (or -y).
 
 Examples:
@@ -400,8 +406,8 @@ Examples:
   gitaware -a           # everything, ○ = clean
   gitaware leave         # safe-to-leave checklist
   gitaware arrive        # catch-up (ls-remote + gh, no fetch)
-  gitaware arrive --fetch -y
-  gitaware fetch -y     # update all remote-tracking refs
+  gitaware arrive --fetch -y   # fetch, then arrive report
+  gitaware fetch -y            # same as arrive --fetch -y
   gitaware prs          # clickable PR links
 
 Config: ~/.config/gitaware/config.json

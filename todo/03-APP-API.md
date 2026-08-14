@@ -10,7 +10,7 @@ Keep `internal/app/enrich.go` (already modern) unless a compile fix is required.
 | status/leave/arrive | `RunStatus(ctx, opts, mode)` |
 | missing | `RunMissing(ctx, opts)` |
 | prs | `RunPRs(ctx, opts)` |
-| fetch | `RunFetch(ctx, opts)` |
+| fetch | alias → `RunStatus(ctx, opts, ModeArrive)` with `Fetch=true` (no separate `RunFetch`) |
 | clone-missing | `RunCloneMissing(ctx, opts, names)` |
 | init | `RunInit(opts, force bool)` |
 | orgs | `RunOrgs(opts)` |
