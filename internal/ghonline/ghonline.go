@@ -256,23 +256,6 @@ func RemoteMismatch(remoteURL, pathOrg, pathName string) bool {
 	return false
 }
 
-// Clone runs gh repo clone owner/name into dest (parent must exist).
-func (c *Client) Clone(ctx context.Context, owner, name, dest string) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, c.bin(), "repo", "clone", owner+"/"+name, dest)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("gh repo clone %s/%s: %s", owner, name, msg)
-	}
-	return nil
-}
-
 func (c *Client) ghJSON(ctx context.Context, dest any, args ...string) error {
 	timeout := c.Timeout
 	if timeout <= 0 {
