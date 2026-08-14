@@ -11,7 +11,6 @@ Keep `internal/app/enrich.go` (already modern) unless a compile fix is required.
 | missing | `RunMissing(ctx, opts)` |
 | prs | `RunPRs(ctx, opts)` |
 | fetch | alias → `RunStatus(ctx, opts, ModeArrive)` with `Fetch=true` (no separate `RunFetch`) |
-| clone-missing | `RunCloneMissing(ctx, opts, names)` |
 | init | `RunInit(opts, force bool)` |
 | orgs | `RunOrgs(opts)` |
 | doctor | `RunDoctor(opts)` |
@@ -51,8 +50,7 @@ Keep `internal/app/enrich.go` (already modern) unless a compile fix is required.
 - **RunOrgs:** list org names from discovered/enriched repos
 - **RunMissing:** Online + IncludeMissing; print names or JSON
 - **RunPRs:** Online + CheckAllPRs; print or JSON
-- **RunFetch:** Fetch=true enrichLocal only (or dedicated fetch loop) + message
-- **RunCloneMissing:** IncludeMissing; gh.Clone into first root
+- **fetch command:** same as arrive with Fetch=true (no separate runner)
 
 ## Do not
 

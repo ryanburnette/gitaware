@@ -59,8 +59,6 @@ func run(args []string) int {
 		err = cmdPRs(ctx, a, rest)
 	case "fetch":
 		err = cmdFetch(ctx, a, rest)
-	case "clone-missing":
-		err = cmdCloneMissing(ctx, a, rest)
 	case "init":
 		err = cmdInit(a, rest)
 	case "orgs":
@@ -180,8 +178,6 @@ func printCmdHelp(name string, fs *flag.FlagSet) {
 		fmt.Fprintln(os.Stdout, "Alias of: gitaware arrive --fetch")
 		fmt.Fprintln(os.Stdout, "MUTATING: git fetch, then show the arrive report (confirms unless -y).")
 		fmt.Fprintln(os.Stdout, "Prefer: gitaware arrive --fetch")
-	case "clone-missing":
-		fmt.Fprintln(os.Stdout, "MUTATING: clone missing GitHub repos into the first root (confirms unless -y).")
 	case "init":
 		fmt.Fprintln(os.Stdout, "Write ~/.config/gitaware/config.json with detected defaults.")
 	case "doctor":
@@ -286,26 +282,6 @@ func cmdFetch(ctx context.Context, a *app.App, args []string) error {
 	return a.RunStatus(ctx, opts, filter.ModeArrive)
 }
 
-func cmdCloneMissing(ctx context.Context, a *app.App, args []string) error {
-	opts, pos, err := parseCommon("clone-missing", args)
-	if err != nil {
-		if _, ok := err.(helpExit); ok {
-			return nil
-		}
-		return err
-	}
-	opts.IncludeMissing = true
-	opts.Online = true
-	// Always confirm clone (mutates disk), even though Fetch may be false.
-	if !confirm.Ask(os.Stdout, os.Stderr, os.Stdin, opts.Yes,
-		"clone missing repositories into the first configured root",
-		"creates new directories and runs: gh repo clone",
-	) {
-		return errAborted
-	}
-	return a.RunCloneMissing(ctx, opts, pos)
-}
-
 var errAborted = fmt.Errorf("aborted")
 
 // confirmMutating prompts when opts.Fetch is set (the only shared mutating flag).
@@ -375,7 +351,6 @@ Commands (what to do):
   prs             Online: open PRs on current branches (read-only)
   missing         Online: GitHub repos not cloned
   fetch           Alias of arrive --fetch (mutates; confirms)
-  clone-missing   Clone missing repos into the first root
   init            Write ~/.config/gitaware/config.json
   doctor          Effective config + git/gh checks
   orgs            List org names under roots
@@ -398,7 +373,7 @@ Read vs write:
   Read-only by default (status, leave, arrive, prs, missing).
   arrive uses ls-remote for freshness — does not update local refs.
   Primary mutate path: arrive --fetch (or alias: fetch).
-  Also mutating: clone-missing, and --fetch on other commands.
+  Also mutating: --fetch on other commands.
   Those print a WARNING and require Y (or -y).
 
 Examples:

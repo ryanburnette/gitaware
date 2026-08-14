@@ -52,7 +52,6 @@ gitaware prs             # list open PRs (read-only, clickable links)
 | `prs` | yes (read) | Open PRs on current branches |
 | `missing` | yes (read) | GitHub repos not cloned (only place that lists them by default) |
 | `fetch` | **write** | Alias of `arrive --fetch` (confirms) |
-| `clone-missing` | **write** | Clone missing into first root (confirms) |
 | `init` | no | Write `~/.config/gitaware/config.json` |
 | `doctor` | no | Effective config + git/gh |
 | `orgs` | no | List org names |
@@ -83,7 +82,7 @@ Most commands only **read** (local git + optional `ls-remote` / `gh`).
 
 To see if you are behind **without** updating refs: `arrive` or `--check-remote` (`git ls-remote`). That never moves `origin/*`.
 
-**Mutating** — `arrive --fetch` (or alias `fetch`), `clone-missing`, and any other use of `--fetch` — prints a warning and requires `Y` (or `-y`).
+**Mutating** — `arrive --fetch` (or alias `fetch`) and any other use of `--fetch` — prints a warning and requires `Y` (or `-y`).
 
 ```sh
 gitaware -h              # overview

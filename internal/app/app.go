@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -490,71 +489,6 @@ func countRepos(repos []model.Repo) int {
 		}
 	}
 	return n
-}
-
-// RunCloneMissing clones missing repos into the first root.
-func (a *App) RunCloneMissing(ctx context.Context, opts config.Options, names []string) error {
-	opts.Online = true
-	opts.IncludeMissing = true
-	p := a.progress(opts, "clone-missing")
-	report, err := a.BuildReport(ctx, opts, filter.ModeArrive, p)
-	if err != nil {
-		p.Fail(err.Error())
-		return err
-	}
-	p.End(fmt.Sprintf("%d missing", len(report.Missing)))
-
-	want := map[string]bool{}
-	for _, n := range names {
-		want[n] = true
-	}
-	store := cache.New(config.CacheDir())
-	gh := ghonline.New(store)
-
-	var toClone []model.MissingRepo
-	for _, m := range report.Missing {
-		if len(want) > 0 && !want[m.DisplayName()] && !want[m.Name] {
-			continue
-		}
-		toClone = append(toClone, m)
-	}
-	if len(toClone) == 0 {
-		fmt.Fprintln(a.Stdout, "nothing to clone")
-		return nil
-	}
-
-	root := firstRoot(opts)
-	for _, m := range toClone {
-		dest := filepath.Join(root, m.Org, m.Name)
-		if st, err := os.Stat(dest); err == nil && st.IsDir() {
-			fmt.Fprintf(a.Stderr, "skip exists: %s\n", dest)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Join(root, m.Org), 0o755); err != nil {
-			return err
-		}
-		fmt.Fprintf(a.Stdout, "cloning %s → %s\n", m.DisplayName(), dest)
-		if err := gh.Clone(ctx, m.Org, m.Name, dest); err != nil {
-			fmt.Fprintf(a.Stderr, "error: %v\n", err)
-			continue
-		}
-	}
-	return nil
-}
-
-// firstRoot returns the first effective root, or cwd.
-func firstRoot(opts config.Options) string {
-	if len(opts.Roots) > 0 {
-		return opts.Roots[0]
-	}
-	if opts.Root != "" {
-		return opts.Root
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return cwd
 }
 
 // RunInit writes a sample config if none exists (or with --force).

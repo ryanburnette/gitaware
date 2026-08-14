@@ -104,12 +104,6 @@ Only command that lists missing by default. Sets `IncludeMissing`.
 - Always confirm unless `-y`
 - Warning banner: mutates git state
 
-### `clone-missing` **W**
-
-- Clone missing into first root
-- Always confirm unless `-y`
-- Uses `gh repo clone`
-
 ### `init`
 
 - Write config if missing (or `--force`)
@@ -236,7 +230,7 @@ Identity still from remote after enrich.
 
 - `New`, `SetupVerbose`, `IsIssues`, `Version`, `BuildTime`
 - `(*App).RunStatus`, `BuildReport`, `RunDoctor`, `RunOrgs`, `RunMissing`,
-  `RunPRs`, `RunCloneMissing`, `RunInit` (`fetch` → `RunStatus` arrive+fetch alias)
+  `RunPRs`, `RunInit` (`fetch` → `RunStatus` arrive+fetch alias)
 - helpers used internally: `progress`, `modeLabel`, `countRepos`, `enrichLocal`,
   `enrichOnline`, `deriveAll`, `ghRepo`
 

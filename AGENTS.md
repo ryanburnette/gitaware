@@ -34,7 +34,7 @@ internal/cache/        ~/.cache/gitaware JSON TTL cache
 ## Invariants
 
 - **Read-only by default.** Network reads (`ls-remote`, `gh`) are fine; disk/git mutations are not silent.
-- Mutating ops (`arrive --fetch`, alias `fetch`, `clone-missing`, other `--fetch`) require interactive `Y` or `-y`.
+- Mutating ops (`arrive --fetch`, alias `fetch`, other `--fetch`) require interactive `Y` or `-y`.
 - Out-of-date check without mutate: `git ls-remote` (`--check-remote` / `arrive` default), not fetch.
 - `fetch` command is a thin alias of `arrive --fetch` (same report path).
 - Offline local status by default. Online: `--online`, `arrive`, `prs`, `missing`.
