@@ -1,0 +1,62 @@
+version: 2
+
+project_name: gitaware
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gitaware
+    main: ./cmd/gitaware
+    binary: gitaware
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/ryanburnette/gitaware/internal/app.Version={{.Version}}
+      - -X github.com/ryanburnette/gitaware/internal/app.BuildTime={{.Date}}
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Tag }}-dev"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - '^Merge pull request'
+      - '^Merge branch'
+
+release:
+  github:
+    owner: ryanburnette
+    name: gitaware
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"
