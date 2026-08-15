@@ -3,17 +3,27 @@
 Multi-repo git status for switching machines.
 
 ```text
-gitaware -a
+gitaware  ~/git  ·  online+ls-remote
 
-┌───┬──────────────────────────────┬────────┬───────┬───────┬...
-│   │ Repository                   │ Branch │ Dirty │ Untrk │
-├───┼──────────────────────────────┼────────┼───────┼───────┼
-│ ● │ ryanburnette/gitaware        │ main   │   1   │       │
-│ ○ │ example/demo                 │ main   │       │       │
-└───┴──────────────────────────────┴────────┴───────┴───────┴
+┌───┬───────────────────────┬──────────────────┬───────┬───────┬───────┬────────┬───────┬──────────────────────────────────┐
+│   │ Repository            │ Branch           │ Dirty │ Untrk │ Ahead │ Behind │ Stash │ Notes                            │
+├───┼───────────────────────┼──────────────────┼───────┼───────┼───────┼────────┼───────┼──────────────────────────────────┤
+│ ○ │ ryanburnette/gitaware │ main             │       │       │       │        │       │                                  │
+│ ● │ example/api           │ main             │   3   │   2   │       │        │       │                                  │
+│ ● │ example/web           │ feature/checkout │       │       │   2   │        │       │ not default branch · PR #42      │
+│ ● │ example/workers       │ main             │       │       │       │   4    │       │ remote has updates               │
+│ ● │ example/docs          │ main             │   1   │       │       │        │   1   │                                  │
+│ ● │ example/cli           │ wip/experiments  │       │       │       │        │       │ no upstream · not default branch │
+│ ● │ example/scratch       │ main             │       │       │       │        │       │ no remote                        │
+│ ● │ example/legacy        │ DETACHED         │       │       │       │        │       │ detached HEAD                    │
+└───┴───────────────────────┴──────────────────┴───────┴───────┴───────┴────────┴───────┴──────────────────────────────────┘
+
+7 issues  ·  8 repos  ·  1 ok  ·  online+ls-remote
 ```
 
-Sample output uses this public repo plus a made-up `example/*` label. Other real repos are not shown.
+Fictional demo via the real table renderer (`go run ./scripts/demo-table`).
+Only real repo name: **ryanburnette/gitaware**. Other rows use `example/*`.
+For a color screenshot: run that command in a wide terminal and capture the window.
 
 - `●` needs attention · `○` clean  
 - Default: **issues only**. Use **`-a`** to show everything.
