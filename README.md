@@ -8,10 +8,12 @@ gitaware -a
 ┌───┬──────────────────────────────┬────────┬───────┬───────┬...
 │   │ Repository                   │ Branch │ Dirty │ Untrk │
 ├───┼──────────────────────────────┼────────┼───────┼───────┼
-│ ● │ cogburnbros/app              │ main   │       │   1   │
-│ ○ │ ryanburnette/authn           │ main   │       │       │
+│ ● │ ryanburnette/gitaware        │ main   │   1   │       │
+│ ○ │ example/demo                 │ main   │       │       │
 └───┴──────────────────────────────┴────────┴───────┴───────┴
 ```
+
+Sample output uses this public repo plus a made-up `example/*` label. Other real repos are not shown.
 
 - `●` needs attention · `○` clean  
 - Default: **issues only**. Use **`-a`** to show everything.
@@ -101,9 +103,10 @@ gitaware leave -h        # flags for one command
 **Who the repo is** comes from the **origin remote** (`host` / `owner` / `name`), not from folder names. Folder layout is only a walk hint.
 
 ```sh
-gitaware -d ~/git -a          # walk ~/git
-cd ~/git && gitaware -a       # same if no config roots
-gitaware --org ryanburnette   # filter by remote owner
+gitaware -d ~/git -a                 # walk ~/git
+cd ~/git && gitaware -a              # same if no config roots
+gitaware -d ~/git/ryanburnette/gitaware -a   # one clone
+gitaware --org ryanburnette          # filter by origin owner
 ```
 
 | Layout (optional) | Path shape when walking |
