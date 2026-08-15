@@ -8,7 +8,4 @@ agent-session.tmp.d
 *.exe
 .DS_Store
 
-# recovery loop runtime (keep gitaware.good tracked)
-recovery/gitaware.candidate
-recovery/*.candidate
-todo/state/
+todo/
