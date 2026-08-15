@@ -1,13 +1,12 @@
 # gitaware
 
-Multi-repo git status for switching machines.
+Walk a folder of git repos and see which ones need attention before you switch machines.
 
-![gitaware status table demo](docs/demo-table.jpg)
+![gitaware status table](docs/demo-table.jpg)
 
-Demo table from `go run ./scripts/demo-table` (fictional `example/*` rows; only real name is **ryanburnette/gitaware**).
+`●` needs attention. `○` is clean. The default view lists only issues; `-a` shows every repo.
 
-- `●` needs attention · `○` clean  
-- Default: **issues only**. Use **`-a`** to show everything.
+Run `leave` before you walk away (dirty files, unpushed commits, stashes). Run `arrive` on the next machine (remotes that moved, local drift).
 
 ## Install
 
